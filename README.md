@@ -1,13 +1,12 @@
 # L1T NanoAOD Reprocessing from MiniAOD
 
-Recipe + CRAB tooling to add L1T information to Data/MC samples that were produced without it, by re-deriving L1T branches from the L1T raw digis stored in MiniAOD and writing them out as extra NanoAOD branches.
+Recipe and automated CRAB tooling to add L1T information to Data/MC samples that were produced without it. This re-derives L1T branches from the L1T raw digis stored in MiniAOD and writes them out as extra NanoAOD branches.
 
-Based on:
-https://github.com/cms-sw/cmssw/tree/master/DPGAnalysis/L1TNanoAOD
+Based on: [DPGAnalysis/L1TNanoAOD](https://github.com/cms-sw/cmssw/tree/master/DPGAnalysis/L1TNanoAOD)
 
 ---
 
-## 1. Setup environment
+## 1. Setup Environment
 
 ```bash
 cmsrel CMSSW_15_0_5
@@ -17,45 +16,61 @@ git cms-init
 git cms-addpkg DPGAnalysis/L1TNanoAOD
 scram b -j8
 cmsenv
-mkdir CustomL1Nanos && cd CustomL1Nanos
-```
-
-Note: Make sure to use CMSSW release that corresponds to the dataset you want to process 
-
----
-
-## 2. Generate the cmsRun config (PSet)
-
-### For data produced in the same content-era as the release (validated: 2025B)
-
-```bash
-cmsDriver.py customL1toNANO --conditions auto:run3_data_prompt \
-  -s NANO:@PHYS+@L1FULL \
-  --datatier NANOAOD --eventcontent NANOAOD \
-  --data --process customl1nano --scenario pp --era Run3 \
-  --customise_unsch Configuration/DataProcessing/RecoTLR.customisePostEra_Run3 \
-  -n 100 \
-  --filein /store/data/<run_path>/<file>.root \
-  --fileout file:out.root \
-  --python_filename=customl1nano.py
-```
-
-Notes:
-- `-s NANO:@PHYS+@L1FULL` gives you both the standard NanoAOD physics-object content **and** the L1T branches. If you only need L1T info (no jets, muons, taus, etc. from the standard NanoAOD content), use `-s NANO:@L1FULL` alone — this avoids a whole class of era-content compatibility issues.
-- `--conditions auto:run3_data_prompt` is a symbolic global tag that  resolves conditions by run-number (IOV), so — as confirmed against a real production example spanning 2022–2025 — it works correctly across the whole Run3 data-taking period, not just "current" data. You do not need a different GT per era.
-
-### Local validation before touching CRAB
-
-Always test on one file first:
-```bash
-cmsRun customl1nano.py
-time cmsRun customl1nano.py    # full-file timing, informs CRAB unitsPerJob later
-edmDumpEventContent out.root | grep -i l1t   # confirm L1 branches present & populated
+git clone [https://github.com/L1TMuonDPG/CustomL1Nanos.git](https://github.com/L1TMuonDPG/CustomL1Nanos.git)
+cd CustomL1Nanos
 ```
 
 ---
 
-## 3. CRAB submission
+## 2. Generate the CMSSW Configurations
+
+Because different eras require different Global Tags and era modifiers, we generate separate Python configurations for 2022 and 2025 data.
+
+Run the bash script:
+
+```bash
+./generateConfigs.sh
+```
+This runs `cmsDriver.py` in the background and generates two files:
+- `customl1nano_2025B.py` (Uses auto:run3_data_prompt)
+
+- `customl1nano_2022.py` (Uses auto:run3_data and the run3_nanoAOD_pre142X modifier)
+
+## 3. Local Validation
+
+Always test locally before submitting to the grid. Ensure you have an active proxy to stream the test files:
+
+```bash
+voms-proxy-init --voms cms --valid 168:00
+```
+Open the configuration file and replace `file:customL1toNANO_PAT.root` with a MINIAOD file from a dataset that you want to run. 
+For example:
+- `customl1nano_2025B.py`: Replace it with `/store/data/Run2025B/Muon0/MINIAOD/PromptReco-v1/000/391/870/00000/5660d01e-f39b-453d-b1e0-616692224a2b.root`
+
+- `customl1nano_2022.py`: Replace it with `/store/data/Run2022C/Muon/MINIAOD/22Sep2023-v1/2520000/b954c535-714a-475a-8aad-448b18503b04.root`
+
+Note: For 2022, use the reprocessed samples with tag `22Sep2023` instead of the Prompt-Reco ones
+
+You can quickly find a dataset to test with `dasgoclient`:
+
+```bash
+dasgoclient -query="file dataset=/Muon0/Run2025B-PromptReco-v1/MINIAOD" --limit=1
+dasgoclient -query="file dataset=/Muon/Run2022C-22Sep2023-v1/MINIAOD" --limit=1
+```
+
+Run the configs (they are limited to 100 events):
+```
+cmsRun customl1nano_2025B.py
+cmsRun customl1nano_2022.py
+```
+
+Verify the L1 branches exist in the output:
+```bash
+edmDumpEventContent out_2025.root
+edmDumpEventContent out_2022.root  # confirm L1 branches present & populated
+```
+
+## 4. CRAB submission
 
 Templates: [`crab/crabConfig_template.py`](crab/crabConfig_template.py) and
 [`crab/submit_all.py`](crab/submit_all.py).
@@ -139,16 +154,3 @@ dasgoclient -query="dataset dataset=/<primary>/<era>-<version>/MINIAOD"
 ```
 
 ---
-
-## 5. Datasets processed so far
-
-| Dataset | Release | Recipe | Status |
-|---|---|---|---|
-| `/Muon0/Run2025B-PromptReco-v1/MINIAOD` | CMSSW_15_0_5 | `@PHYS+@L1FULL`, era `Run3` | ✅ Validated, submitted to CRAB |
-| `/Muon1/Run2025B-PromptReco-v1/MINIAOD` | CMSSW_15_0_5 | same as above | Submitted |
-
----
-
-## 6. Troubleshooting reference
-
-See [`docs/troubleshooting.md`](docs/troubleshooting.md) for known issues and fixes encountered so far (missing L1T raw collections, era-contentmismatches, CRAB memory/site issues, etc.).
