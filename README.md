@@ -16,7 +16,7 @@ git cms-init
 git cms-addpkg DPGAnalysis/L1TNanoAOD
 scram b -j8
 cmsenv
-git clone [https://github.com/L1TMuonDPG/CustomL1Nanos.git](https://github.com/L1TMuonDPG/CustomL1Nanos.git)
+git clone https://github.com/L1TMuonDPG/CustomL1Nanos.git
 cd CustomL1Nanos
 ```
 
